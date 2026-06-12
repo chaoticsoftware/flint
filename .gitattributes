@@ -1,0 +1,3 @@
+# spark.sh must be checked out with LF endings on any platform —
+# bash on macOS/Linux chokes on CRLF (shebang line, command parsing).
+*.sh text eol=lf

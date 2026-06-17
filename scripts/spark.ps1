@@ -338,7 +338,7 @@ $ghStatusOutput = gh auth status --hostname github.com 2>&1 | Out-String
 $loggedInUsers = [regex]::Matches($ghStatusOutput, 'account\s+(\S+)') |
     ForEach-Object { $_.Groups[1].Value }
 
-if ($loggedInUsers.Count -ge 2) {
+if (@($loggedInUsers).Count -ge 2) {
     Write-Ok "Two or more accounts already logged in: $($loggedInUsers -join ', '). Skipping gh auth login."
 } else {
     $chaosUsername = Read-Host "  Enter your PERSONAL GitHub username (chaos identity)"

@@ -334,6 +334,9 @@ if ($globalContent -match [regex]::Escape($msftInclude)) {
 
 Write-Step "Checking GitHub authentication (dual-identity)..."
 
+$ghLoginHelp = gh auth login --help 2>&1 | Out-String
+$ghSupportsSkipSshKey = $ghLoginHelp -match '--skip-ssh-key'
+
 $ghStatusOutput = gh auth status --hostname github.com 2>&1 | Out-String
 $loggedInUsers = [regex]::Matches($ghStatusOutput, 'account\s+(\S+)') |
     ForEach-Object { $_.Groups[1].Value }
@@ -357,7 +360,11 @@ if (@($loggedInUsers).Count -ge 2) {
             Write-Host "  │  Make sure your browser is signed into THAT account     │" -ForegroundColor Cyan
             Write-Host "  │  before approving the OAuth prompt.                     │" -ForegroundColor Cyan
             Write-Host "  └─────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
-            gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key
+            if ($ghSupportsSkipSshKey) {
+                gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key
+            } else {
+                gh auth login --hostname github.com --git-protocol ssh
+            }
             Write-Ok "Logged in as $($entry.username) ($($entry.label))."
         }
     }

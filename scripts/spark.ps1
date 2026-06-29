@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# spark.ps1 — Windows bootstrap for a fresh Kitsune machine.
+# spark.ps1 — Windows bootstrap for a fresh dev machine.
 #
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │  MIRROR NOTICE                                                      │
@@ -11,7 +11,7 @@
 # │  vice versa. Step numbering is shared between the two so a reader   │
 # │  diff'ing them can confirm they stay in sync at a glance.           │
 # └─────────────────────────────────────────────────────────────────────┘
-#
+#S
 # Run via the README one-liner. The script self-bootstraps pwsh 7 if the
 # host is stock Windows PowerShell 5.1; everything below the bootstrap
 # block runs in pwsh.
@@ -21,17 +21,12 @@
 #   1.  Git
 #   2.  Node.js LTS
 #   3.  Agency CLI
-#   4.  VS Code
-#   5.  GitHub CLI (gh)
-#   5a. ed25519 SSH keys for github-chaos + github-msft
-#   5b. ~/.ssh/config host alias blocks
-#   5c. Per-identity ~/.gitconfig-chaos + ~/.gitconfig-msft
-#   5d. Global ~/.gitconfig includeIf blocks (~/src/chaos, ~/src/msft)
-#   5e. gh auth login for each identity
-#   6.  Clone chaoticsoftware/Kitsune → ~/src/chaos/Kitsune
-#   7.  npm install in local-store/ + text-renderer/
-#   8.  Patch VS Code settings.json (chat.plugins.* keys)
-#   9.  Open VS Code
+#   4.  GitHub CLI (gh)
+#   4a. ed25519 SSH keys for github-chaos + github-msft
+#   4b. ~/.ssh/config host alias blocks
+#   4c. Per-identity ~/.gitconfig-chaos + ~/.gitconfig-msft
+#   4d. Global ~/.gitconfig includeIf blocks (~/src/chaos, ~/src/msft)
+#   4e. gh auth login for each identity
 
 param(
     # Skip the interactive passphrase prompt when generating SSH keys.
@@ -84,6 +79,12 @@ function Update-PathEnv {
     $env:Path    = "$machinePath;$userPath"
 }
 
+function Update-GhCli {
+    Write-Host "  Updating GitHub CLI..."
+    winget upgrade --id GitHub.cli --exact --accept-package-agreements --accept-source-agreements
+    Update-PathEnv
+}
+
 # ── 1. Git ────────────────────────────────────────────────────────────────────
 
 Write-Step "Checking Git..."
@@ -132,26 +133,14 @@ if (Test-Cmd 'agency') {
     }
 }
 
-# ── 4. VS Code ────────────────────────────────────────────────────────────────
-
-Write-Step "Checking VS Code..."
-$codeCmd = if (Test-Cmd 'code') { 'code' } elseif (Test-Cmd 'code-insiders') { 'code-insiders' } else { $null }
-if ($codeCmd) {
-    Write-Ok "VS Code already installed ($codeCmd)."
-} else {
-    Write-Host "  Installing VS Code..."
-    winget install --id Microsoft.VisualStudioCode --exact --accept-package-agreements --accept-source-agreements
-    Update-PathEnv
-    $codeCmd = if (Test-Cmd 'code') { 'code' } elseif (Test-Cmd 'code-insiders') { 'code-insiders' } else { $null }
-    if ($codeCmd) { Write-Ok "VS Code installed ($codeCmd)." }
-    else { Write-Fail "VS Code installation failed. Please install it manually: https://code.visualstudio.com"; exit 1 }
-}
-
-# ── 5. GitHub CLI (gh) ────────────────────────────────────────────────────────
+# ── 4. GitHub CLI (gh) ────────────────────────────────────────────────────────
 
 Write-Step "Checking GitHub CLI..."
 if (Test-Cmd 'gh') {
     Write-Ok "GitHub CLI already installed: $(gh --version | Select-Object -First 1)"
+    # Any existing install is upgraded to the latest version unconditionally.
+    Update-GhCli
+    Write-Ok "GitHub CLI is up to date: $(gh --version | Select-Object -First 1)"
 } else {
     Write-Host "  Installing GitHub CLI..."
     winget install --id GitHub.cli --exact --accept-package-agreements --accept-source-agreements
@@ -167,7 +156,7 @@ if (Test-Cmd 'gh') {
 git config --global credential.helper '!gh auth git-credential' 2>$null
 Write-Ok "Git credential helper set to GitHub CLI."
 
-# ── 5a. Dual-identity SSH keys ────────────────────────────────────────────────
+# ── 4a. Dual-identity SSH keys ────────────────────────────────────────────────
 
 Write-Step "Setting up dual-identity SSH keys (chaos + msft)..."
 
@@ -217,7 +206,7 @@ foreach ($identity in @('github-chaos', 'github-msft')) {
     }
 }
 
-# ── 5b. SSH config host aliases ───────────────────────────────────────────────
+# ── 4b. SSH config host aliases ───────────────────────────────────────────────
 
 Write-Step "Configuring SSH host aliases..."
 
@@ -242,7 +231,7 @@ Host $identity
     }
 }
 
-# ── 5c. Per-identity gitconfig files + url.insteadOf rewrites ─────────────────
+# ── 4c. Per-identity gitconfig files + url.insteadOf rewrites ─────────────────
 
 Write-Step "Writing per-identity gitconfig files..."
 
@@ -293,7 +282,7 @@ if ($needMsft) {
     Write-Ok "$gitconfigMsft already exists — skipped."
 }
 
-# ── 5d. Global ~/.gitconfig includeIf blocks ─────────────────────────────────
+# ── 4d. Global ~/.gitconfig includeIf blocks ─────────────────────────────────
 
 Write-Step "Patching global ~/.gitconfig with includeIf blocks..."
 
@@ -325,7 +314,7 @@ if ($globalContent -match [regex]::Escape($msftInclude)) {
     Write-Ok "Added includeIf block for ~/src/msft/."
 }
 
-# ── 5e. gh auth login per identity ───────────────────────────────────────────
+# ── 4e. gh auth login per identity ───────────────────────────────────────────
 #
 # gh 2.40+ stores multiple accounts per hostname natively; the second login
 # does NOT overwrite the first. `gh auth switch -u <user>` selects the active
@@ -365,110 +354,13 @@ if (@($loggedInUsers).Count -ge 2) {
 
 Write-Ok "GitHub dual-identity auth complete."
 
-# ── 6. Clone Kitsune ─────────────────────────────────────────────────────────
-
-Write-Step "Cloning Kitsune..."
-
-$cloneTarget = Join-Path $HOME 'src' 'chaos' 'Kitsune'
-
-if (Test-Path (Join-Path $cloneTarget '.git')) {
-    Write-Ok "Kitsune already cloned at $cloneTarget — pulling latest..."
-    git -C $cloneTarget pull --ff-only
-} else {
-    $parentDir = Split-Path $cloneTarget
-    if (-not (Test-Path $parentDir)) {
-        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-    }
-    gh repo clone chaoticsoftware/Kitsune $cloneTarget
-    Write-Ok "Cloned to $cloneTarget"
-}
-
-# ── 7. npm install ────────────────────────────────────────────────────────────
-
-Write-Step "Installing npm dependencies..."
-
-foreach ($pkg in @('local-store', 'text-renderer')) {
-    $pkgDir = Join-Path $cloneTarget $pkg
-    if (Test-Path (Join-Path $pkgDir 'package.json')) {
-        Write-Host "  npm install in $pkg..."
-        Push-Location $pkgDir
-        try { npm install } finally { Pop-Location }
-        Write-Ok "$pkg dependencies installed."
-    } else {
-        Write-Warn "$pkgDir/package.json not found — skipping."
-    }
-}
-
-# ── 8. VS Code settings.json patch ───────────────────────────────────────────
-
-Write-Step "Patching VS Code settings.json..."
-
-$appData  = [System.Environment]::GetFolderPath('ApplicationData')
-$insiders = Join-Path $appData 'Code - Insiders' 'User'
-$stable   = Join-Path $appData 'Code' 'User'
-$settingsDir = if ($codeCmd -eq 'code-insiders' -and (Test-Path $insiders)) { $insiders } else { $stable }
-
-$settingsFile = Join-Path $settingsDir 'settings.json'
-
-if (-not (Test-Path $settingsDir)) {
-    New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
-}
-
-$settings = if (Test-Path $settingsFile) {
-    try {
-        Get-Content $settingsFile -Raw | ConvertFrom-Json -AsHashtable
-    } catch {
-        Write-Warn "settings.json exists but could not be parsed as JSON — backing up and starting fresh."
-        Copy-Item $settingsFile "$settingsFile.bak"
-        @{}
-    }
-} else {
-    @{}
-}
-
-$changed = $false
-
-if ($settings['chat.plugins.enabled'] -ne $true) {
-    $settings['chat.plugins.enabled'] = $true
-    $changed = $true
-}
-
-$marketplaces = $settings['chat.plugins.marketplaces']
-$kitsune      = 'chaoticsoftware/Kitsune'
-if ($marketplaces -isnot [System.Collections.IList] -or ($kitsune -notin $marketplaces)) {
-    if ($marketplaces -isnot [System.Collections.IList]) {
-        $settings['chat.plugins.marketplaces'] = @($kitsune)
-    } else {
-        $settings['chat.plugins.marketplaces'] = @($marketplaces) + $kitsune
-    }
-    $changed = $true
-}
-
-if ($changed) {
-    $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsFile -Encoding utf8
-    Write-Ok "VS Code settings.json updated at $settingsFile"
-} else {
-    Write-Ok "VS Code settings.json already up to date."
-}
-
-# ── 9. Open VS Code ───────────────────────────────────────────────────────────
-
-Write-Step "Opening VS Code in $cloneTarget..."
-& $codeCmd $cloneTarget
-
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-Write-Host "  Kitsune setup complete!" -ForegroundColor Green
+Write-Host "  Setup complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Next steps:" -ForegroundColor White
-Write-Host "    1. VS Code will prompt you to install the bionic-brain"
-Write-Host "       plugin from the chaoticsoftware/Kitsune marketplace."
-Write-Host "    2. Sign in to BOTH GitHub accounts in VS Code:"
-Write-Host "       - Personal (chaos) account → binds bb-github-chaos MCP."
-Write-Host "       - Work (msft) account     → binds bb-github-msft MCP."
-Write-Host "       VS Code will prompt which account to bind when each"
-Write-Host "       server is first used. Verify with bb-github-*.get_me."
-Write-Host "    3. Run /configure in any Copilot Chat session to finish"
-Write-Host "       per-user setup (learner repo, journal paths, etc.)."
-Write-Host "    4. Install workiq CLI separately — see bionic-brain README."
+Write-Host "  Installed and configured:"
+Write-Host "    1. Git"
+Write-Host "    2. Node.js LTS"
+Write-Host "    3. Agency CLI"
+Write-Host "    4. GitHub CLI (gh) with dual-identity SSH keys and auth"
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green

@@ -464,11 +464,6 @@ fi
 
 step "Checking GitHub authentication (dual-identity)..."
 
-GH_SUPPORTS_SKIP_SSH_KEY=0
-if gh auth login --help 2>&1 | grep -q -- '--skip-ssh-key'; then
-    GH_SUPPORTS_SKIP_SSH_KEY=1
-fi
-
 GH_STATUS="$(gh auth status --hostname github.com 2>&1 || true)"
 LOGGED_IN_USERS="$(printf '%s\n' "$GH_STATUS" | grep -oE 'account[[:space:]]+[^[:space:]]+' | awk '{print $2}' | sort -u)"
 LOGGED_IN_COUNT=0
@@ -492,11 +487,7 @@ else
             printf '%s  │  Make sure your browser is signed into THAT account     │%s\n' "$C_STEP" "$C_OFF"
             printf '%s  │  before approving the OAuth prompt.                     │%s\n' "$C_STEP" "$C_OFF"
             printf '%s  └─────────────────────────────────────────────────────────┘%s\n' "$C_STEP" "$C_OFF"
-            if [ "$GH_SUPPORTS_SKIP_SSH_KEY" -eq 1 ]; then
-                gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key
-            else
-                gh auth login --hostname github.com --git-protocol ssh
-            fi
+            gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key
             ok "Logged in as $USERNAME ($LABEL)."
         fi
     done

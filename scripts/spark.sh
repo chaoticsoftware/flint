@@ -66,6 +66,36 @@ fail() { printf '  %s✗ %s%s\n'  "$C_FAIL" "$1" "$C_OFF"; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Read interactive prompts from the controlling terminal rather than stdin.
+# This keeps prompts working when the script itself is piped to bash.
+PROMPT_TTY=''
+if [ -r /dev/tty ]; then
+    PROMPT_TTY=/dev/tty
+fi
+
+prompt_read() {
+    local __var_name="$1"
+    local __prompt="$2"
+    local __value=''
+    if [ -n "$PROMPT_TTY" ]; then
+        IFS= read -r -p "$__prompt" __value <"$PROMPT_TTY"
+        printf -v "$__var_name" '%s' "$__value"
+    else
+        fail "Interactive input required, but /dev/tty is unavailable. Re-run in an interactive terminal."
+        exit 1
+    fi
+}
+
+prompt_enter() {
+    local __prompt="$1"
+    if [ -n "$PROMPT_TTY" ]; then
+        IFS= read -r -p "$__prompt" _ <"$PROMPT_TTY"
+    else
+        fail "Interactive input required, but /dev/tty is unavailable. Re-run in an interactive terminal."
+        exit 1
+    fi
+}
+
 # ── Platform detection ───────────────────────────────────────────────────────
 
 OS="$(uname -s)"
@@ -296,7 +326,7 @@ for identity in github-chaos github-msft; do
             ssh-keygen -t ed25519 -f "$KEY_PATH" -N '' -C "$identity" >/dev/null
             warn "  Key generated without passphrase (--no-passphrase). Private key is unencrypted on disk."
         else
-            ssh-keygen -t ed25519 -f "$KEY_PATH" -C "$identity"
+            ssh-keygen -t ed25519 -f "$KEY_PATH" -C "$identity" <"$PROMPT_TTY"
         fi
         chmod 600 "$KEY_PATH"
         chmod 644 "$KEY_PATH.pub"
@@ -316,7 +346,7 @@ for identity in github-chaos github-msft; do
         printf '%s  └─────────────────────────────────────────────────────────┘%s\n' "$C_WARN" "$C_OFF"
         cat "$KEY_PATH.pub"
         echo ""
-        read -r -p "  Press Enter once you have added the key to GitHub, then continue: " _
+        prompt_enter "  Press Enter once you have added the key to GitHub, then continue: "
     fi
 done
 
@@ -358,14 +388,14 @@ NEED_MSFT=0;  [ ! -f "$GITCONFIG_MSFT"  ] && NEED_MSFT=1
 if [ "$NEED_CHAOS" -eq 1 ]; then
     echo ""
     printf '  %sPersonal Git identity (written to ~/.gitconfig-chaos):%s\n' "$C_STEP" "$C_OFF"
-    read -r -p "    Full name: " CHAOS_NAME
-    read -r -p "    Email: "     CHAOS_EMAIL
+    prompt_read CHAOS_NAME "    Full name: "
+    prompt_read CHAOS_EMAIL "    Email: "
 fi
 if [ "$NEED_MSFT" -eq 1 ]; then
     echo ""
     printf '  %sWork Git identity (written to ~/.gitconfig-msft):%s\n' "$C_STEP" "$C_OFF"
-    read -r -p "    Full name: " MSFT_NAME
-    read -r -p "    Email: "     MSFT_EMAIL
+    prompt_read MSFT_NAME "    Full name: "
+    prompt_read MSFT_EMAIL "    Email: "
 fi
 
 if [ "$NEED_CHAOS" -eq 1 ]; then
@@ -442,8 +472,8 @@ LOGGED_IN_COUNT=0
 if [ "$LOGGED_IN_COUNT" -ge 2 ]; then
     ok "Two or more accounts already logged in: $(printf '%s' "$LOGGED_IN_USERS" | tr '\n' ',' | sed 's/,$//; s/,/, /g'). Skipping gh auth login."
 else
-    read -r -p "  Enter your PERSONAL GitHub username (chaos identity): " CHAOS_USERNAME
-    read -r -p "  Enter your WORK GitHub username (msft identity): "     MSFT_USERNAME
+    prompt_read CHAOS_USERNAME "  Enter your PERSONAL GitHub username (chaos identity): "
+    prompt_read MSFT_USERNAME "  Enter your WORK GitHub username (msft identity): "
 
     for entry in "personal (chaos)|$CHAOS_USERNAME" "work (msft)|$MSFT_USERNAME"; do
         LABEL="${entry%%|*}"
